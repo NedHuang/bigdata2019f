@@ -66,21 +66,19 @@ import org.apache.hadoop.mapreduce.lib.chain.ChainMapper;
 import org.apache.hadoop.mapreduce.lib.chain.ChainReducer;
 
 import org.apache.hadoop.mapreduce.lib.map.InverseMapper;
+import tl.lin.data.map.HMapStIW;
+import tl.lin.data.map.HashMapWritable;
 
 
-public class PairsPMI extends Configured implements Tool {
+public class StripesPMI extends Configured implements Tool {
   private static final Logger LOG = Logger.getLogger(PairsPMI.class);
 
 
   /**************************************************************************
-  * Word
+  * WordStripesPMI
   ***************************************************************************/
+  // from PairsPMI
   public static final class WordMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
-  // Mapper: emits (token, 1) for every word occurrence.  from WordCount.java 
-  
-    // private static final FloatWritable ONE = new FloatWritable(1); //A WritableComparable for floats, do we need float here?
-    // private static final PairOfStrings BIGRAM = new PairOfStrings();
-    // Reuse objects to save overhead of object creation.
     private static final IntWritable ONE = new IntWritable(1);
     private static final Text WORD = new Text();
     // user-defined counter, count lines. https://hadoop.apache.org/docs/r2.7.4/api/org/apache/hadoop/mapred/Counters.html
@@ -95,7 +93,7 @@ public class PairsPMI extends Configured implements Tool {
       
       // count the line, increment the counter by 1
       Counter line_conter = context.getCounter(LineCounter.lineCounter);
-      line_conter.increment(1);
+      line_conter.increment(1L);
 
       for(String word : Tokenizer.tokenize(value.toString())) {
         tokenCounter++;
@@ -144,61 +142,55 @@ public class PairsPMI extends Configured implements Tool {
       context.write(key, SUM);
     }
   }
-  //输出<'a',1>。。。
 
 
 
 
 /**************************************************************************
- * Pair
+ * Stripes
 ***************************************************************************/
-  public static final class PairMapper extends Mapper<LongWritable, Text, PairOfStrings, IntWritable> {
-    // emit (Pair->key, One->value) , e.g., (('aaa','bbb'),1)
-    private static final PairOfStrings PAIR = new PairOfStrings();
-    private static final IntWritable ONE = new IntWritable(1);
+  public static final class StripeMapper extends Mapper<LongWritable, Text, Text, HMapStIW> {
+    // emit (mainKey,(k1,v1)) etc ('cs651', ("hao'ma'fan'a",666))
+    private static final HMapStIW MAP = new HMapStIW();  //<String,Integer>
+    private static final Text mainKey = new Text();
     
     @Override
     public void map(LongWritable key, Text value, Context context)
       throws IOException, InterruptedException {
       int tokenCounter = 0;
-      Set<String> pairSet = new HashSet<String>();
+      Set<String> keyStripe = new HashSet<String>();
       
       // add the first 40 word into a set，数前40个
       for(String word : Tokenizer.tokenize(value.toString())){
         tokenCounter ++;
         if(tokenCounter > 40) break;
-        pairSet.add(word);
+        keyStripe.add(word);
       }
+      // keyStripe = {'a','b','c',...}
 
-      // add words into pair
-      for(String leftWord : pairSet){
-        for(String rightWord : pairSet){
-          // ignore if leftword == rightword
-          if(leftWord != rightWord){
-            PAIR.set(leftWord,rightWord);
-            context.write(PAIR,ONE);
-          }
-          // context.write(PAIR,ONE); 
+      // add words into stripe
+      for(String leftWord : keyStripe){
+        MAP.clear(); // clear the value (k1,v1)
+        for(String rightWord : keyStripe){
+          MAP.increment(rightWord);
         }
+        mainKey.set(leftWord);
+        context.write(mainKey, MAP);
       }
     }
   }
 
-  //https://github.com/lintool/bespin/blob/master/src/main/java/io/bespin/java/mapreduce/bigram/ComputeBigramRelativeFrequencyPairs.java
-  private static final class PairCombiner extends
-      Reducer<PairOfStrings, IntWritable, PairOfStrings, IntWritable> {
-    private static final IntWritable SUM = new IntWritable();
-
+  //Combiner
+  public static final class StripeCombiner extends Reducer<Text, HMapStIW, Text, HMapStIW> {
     @Override
-    public void reduce(PairOfStrings key, Iterable<IntWritable> values, Context context)
-          throws IOException, InterruptedException {
-      Iterator<IntWritable> iter = values.iterator();
-      int sum = 0;
+    public void reduce(Text key, Iterable<HMapStIW> values, Context context)
+        throws IOException, InterruptedException {
+      Iterator<HMapStIW> iter = values.iterator();
+      HMapStIW map = new HMapStIW();
       while (iter.hasNext()) {
-          sum += iter.next().get();
+        map.plus(iter.next());
       }
-      SUM.set(sum);
-      context.write(key, SUM);
+      context.write(key, map);
     }
   }
 
@@ -206,19 +198,21 @@ public class PairsPMI extends Configured implements Tool {
   // combiner In the final output, the key should be a word (e.g., A), and the value should be a map, 
   // where each of the keys is a co-occurring word (e.g., B), and the value is a pair (PMI, count) denoting its PMI and co-occurrence count.
   // modifiey from WordCombiner  Myreducer in WordCount.java
-  public static final class PairReducer extends Reducer<PairOfStrings, IntWritable, PairOfStrings, PairOfFloatInt> {
-
-    private static final PairOfFloatInt PMI = new PairOfFloatInt();
+  public static final class StripeReducer extends Reducer<Text, HMapStIW, Text, HashMapWritable> {
+    private static final Text KEY = new Text();
+    private static final HashMapWritable MAP = new HashMapWritable();
+    
     private static final Map<String, Integer> wordCount = new HashMap<String, Integer>();
-
     private static long number_of_lines;
 
     @Override
+    // call once at the start
     public void setup(Context context) throws IOException, InterruptedException {
       Configuration conf = context.getConfiguration();
       //initialize number_of_lines to 0
       number_of_lines = conf.getLong("counter", 0L);
       //read from file, get how many times each word appears
+      
       
       FileSystem fileSystem = FileSystem.get(conf);
       Path temp_file_path = new Path("tempPath/part-r-*");
@@ -243,29 +237,41 @@ public class PairsPMI extends Configured implements Tool {
     }
 
     @Override
-    public void reduce(PairOfStrings key, Iterable<IntWritable> values, Context context)
+    public void reduce(Text key, Iterable<HMapStIW> values, Context context)
         throws IOException, InterruptedException {
+      // from combiner
+      Iterator<HMapStIW> iter = values.iterator();
+      HMapStIW map = new HMapStIW();
       Configuration conf = context.getConfiguration();
       int threshold = conf.getInt("threshold", 0);
       number_of_lines = conf.getLong("counter", 0L);
-      int sum = 0;
-      for (IntWritable value : values) {
-        sum += value.get();
+      while (iter.hasNext()) {
+        map.plus(iter.next());
       }
 
-      if (sum >= threshold) {
-        String left = key.getLeftElement();
-        String right = key.getRightElement();
-        // gives NaN
-        // float numerator = (float)(sum / number_of_lines);
-        // float denominator = (double)(wordCount.get(left) / number_of_lines wordCount.get(right) / number_of_lines);
-        // float pmi = (float) Math.log10(numerator / denominator);
-        float pmi = (float) Math.log10((double)(sum * number_of_lines) / (double)(wordCount.get(left) * wordCount.get(right)));
-        PMI.set(pmi, sum);
-        context.write(key, PMI);
+      String left = key.toString();
+      KEY.set(left);
+      MAP.clear();
+      for (String right : map.keySet()) {
+        if (map.get(right) >= threshold) {
+          int pair_co_occurance = map.get(right);
+          // gives NaN
+          // float numerator = (float)(pair_co_occurance / number_of_lines);
+          // float denominator = (double)(wordCount.get(left) / number_of_lines
+          // wordCount.get(right) / number_of_lines);
+          // float pmi = (float) Math.log10(numerator / denominator);
+          float StripePmi = (float) Math.log10((double)(pair_co_occurance)*number_of_lines / (double)(wordCount.get(left) * wordCount.get(right)));
+          PairOfFloatInt PMI_COUNT = new PairOfFloatInt();
+          PMI_COUNT.set(StripePmi, pair_co_occurance);
+          MAP.put(right, PMI_COUNT);
+        }
+      }
+      if (MAP.size() > 0) {
+        context.write(KEY, MAP);
       }
     }
   }
+
 
   //https://github.com/lintool/bespin/blob/master/src/main/java/io/bespin/java/mapreduce/bigram/ComputeBigramRelativeFrequencyPairs.java
   private static final class PairPartitioner extends Partitioner<PairOfStrings, FloatWritable> {
@@ -282,7 +288,7 @@ public class PairsPMI extends Configured implements Tool {
   /**
    * Creates an instance of this tool.
    */
-  private PairsPMI() {
+  private StripesPMI() {
   }
 
   private static final class Args {
@@ -377,9 +383,9 @@ public class PairsPMI extends Configured implements Tool {
     LOG.info(" - threshold: " + args.threshold);
 
     Configuration conf = getConf();
-    conf.set("tempPath", tempPath);
+    conf.set("tempPath", tempPath); 
+    JobConf jconf = new JobConf(PairsPMI.class); // seems to be useless
     conf.set("threshold", Integer.toString(args.threshold));
-    JobConf jConf = new JobConf(StripesPMI.class);
     Job job = Job.getInstance(conf);
     job.setJobName(PairsPMI.class.getSimpleName());
     job.setJarByClass(PairsPMI.class);
@@ -397,7 +403,7 @@ public class PairsPMI extends Configured implements Tool {
     job.setOutputFormatClass(TextOutputFormat.class);
 
     job.setMapperClass(WordMapper.class);
-    job.setCombinerClass(WordReducer.class);
+    // job.setCombinerClass(WordReducer.class);
     job.setReducerClass(WordReducer.class);
 
     job.getConfiguration().setInt("mapred.max.split.size", 1024 * 1024 * 32);
@@ -414,44 +420,47 @@ public class PairsPMI extends Configured implements Tool {
     job.waitForCompletion(true);
     LOG.info("Job Finished in " + (System.currentTimeMillis() - startTime) / 1000.0 + " seconds");
 
-
+    // Pair
     // Second Job
-    JobConf jConf_pair = new JobConf(StripesPMI.class); // seems to be useless
+    Configuration conf_pair = getConf();
+    JobConf jconf_pair = new JobConf(PairsPMI.class); // seems to be useless
+
 
     long count = job.getCounters().findCounter(WordMapper.LineCounter.lineCounter).getValue();
     // set a counter to count number of lines
     conf.setLong("counter", count);
-    Job job_pair = Job.getInstance(conf);
-    job_pair.setJobName(PairsPMI.class.getSimpleName());
-    job_pair.setJarByClass(PairsPMI.class);
+    Job job_stripe = Job.getInstance(conf);
+    job_stripe.setJobName(PairsPMI.class.getSimpleName());
+    job_stripe.setJarByClass(PairsPMI.class);
 
-    job_pair.setNumReduceTasks(args.numReducers);
+    job_stripe.setNumReduceTasks(args.numReducers);
 
-    FileInputFormat.setInputPaths(job_pair, new Path(args.input));
-    FileOutputFormat.setOutputPath(job_pair, new Path(args.output));
+    FileInputFormat.setInputPaths(job_stripe, new Path(args.input));
+    FileOutputFormat.setOutputPath(job_stripe, new Path(args.output));
 
-    job_pair.setMapOutputKeyClass(PairOfStrings.class);
-    job_pair.setMapOutputValueClass(IntWritable.class);
-    job_pair.setOutputKeyClass(PairOfStrings.class);
-    job_pair.setOutputValueClass(PairOfFloatInt.class);
-    job_pair.setOutputFormatClass(TextOutputFormat.class);
+    //cange
+    job_stripe.setMapOutputKeyClass(Text.class);
+    job_stripe.setMapOutputValueClass(HMapStIW.class);
+    job_stripe.setOutputKeyClass(Text.class);
+    job_stripe.setOutputValueClass(HashMapWritable.class);
+    job_stripe.setOutputFormatClass(TextOutputFormat.class);
 
-    job_pair.getConfiguration().setInt("mapred.max.split.size", 1024 * 1024 * 32);
-    job_pair.getConfiguration().set("mapreduce.map.memory.mb", "3072");
-    job_pair.getConfiguration().set("mapreduce.map.java.opts", "-Xmx3072m");
-    job_pair.getConfiguration().set("mapreduce.reduce.memory.mb", "3072");
-    job_pair.getConfiguration().set("mapreduce.reduce.java.opts", "-Xmx3072m");
+    job_stripe.getConfiguration().setInt("mapred.max.split.size", 1024 * 1024 * 32);
+    job_stripe.getConfiguration().set("mapreduce.map.memory.mb", "3072");
+    job_stripe.getConfiguration().set("mapreduce.map.java.opts", "-Xmx3072m");
+    job_stripe.getConfiguration().set("mapreduce.reduce.memory.mb", "3072");
+    job_stripe.getConfiguration().set("mapreduce.reduce.java.opts", "-Xmx3072m");
 
-    job_pair.setMapperClass(PairMapper.class);
-    job_pair.setCombinerClass(PairCombiner.class);
-    job_pair.setReducerClass(PairReducer.class);
+    job_stripe.setMapperClass(StripeMapper.class);
+    // job_stripe.setCombinerClass(StripeCombiner.class);
+    job_stripe.setReducerClass(StripeReducer.class);
 
     // Delete the output directory if it exists already.
     outputDir = new Path(args.output);
     FileSystem.get(conf).delete(outputDir, true);
 
     startTime = System.currentTimeMillis();
-    job_pair.waitForCompletion(true);
+    job_stripe.waitForCompletion(true);
     LOG.info("Job Finished in " + (System.currentTimeMillis() - startTime) / 1000.0 + " seconds");
 
     return 0;
@@ -464,6 +473,6 @@ public class PairsPMI extends Configured implements Tool {
    * @throws Exception if tool encounters an exception
    */
   public static void main(String[] args) throws Exception {
-    ToolRunner.run(new PairsPMI(), args);
+    ToolRunner.run(new StripesPMI(), args);
   }
 }
