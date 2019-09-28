@@ -107,7 +107,7 @@
     .filter((pair) => pair._1._2 != "*")
 
 
-    counts.map(pair => pair._1 + "\t" + pair._2.toString).saveAsTextFile(args.output())
+    counts.map(pair =>"("+ pair._1 + "\t" + pair._2.toString + ")").saveAsTextFile(args.output())
     }
   }
 

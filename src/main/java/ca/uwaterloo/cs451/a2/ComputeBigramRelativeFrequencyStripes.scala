@@ -108,7 +108,7 @@
     .filter((pair) => pair._1._2 != "*")
     // do stripes , turn ((a,b), 0.5), ((a,c),0.5)  to (a, ((b, 0.5),(c, 0.5)) ) ...
     .map(
-      pair => (pair._1._1, ("(" + pair._1._2 + ","+ pair._2.toString+")")) //  (a, ((b, 0.5)),   (a, ((c, 0.5))... need to group by key
+      pair => (pair._1._1, (pair._1._2 + "="+ pair._2.toString)) //  (a, ((b, 0.5)),   (a, ((c, 0.5))... need to group by key
     )
     .groupByKey()
     
@@ -121,7 +121,7 @@
       need to split the stripes into pairs
     */
     .map(s => (s._1, s._2.toList.mkString(", ")))
-    counts.map(s => s._1 + "\t" + "{" + s._2 + "}").saveAsTextFile(args.output())
+    counts.map(s => '(' + s._1 + ",{" + s._2 + "})").saveAsTextFile(args.output())
     }
   }
 
