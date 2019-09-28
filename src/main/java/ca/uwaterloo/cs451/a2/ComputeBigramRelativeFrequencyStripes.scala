@@ -108,11 +108,20 @@
     .filter((pair) => pair._1._2 != "*")
     // do stripes , turn ((a,b), 0.5), ((a,c),0.5)  to (a, ((b, 0.5),(c, 0.5)) ) ...
     .map(
-      pair => (pair._1._1, (pair._1._2, pair._2)) //  (a, ((b, 0.5)),   (a, ((c, 0.5))... need to group by key
+      pair => (pair._1._1, ("(" + pair._1._2 + ","+ pair._2.toString+")")) //  (a, ((b, 0.5)),   (a, ((c, 0.5))... need to group by key
     )
     .groupByKey()
-
-    counts.map(pair => pair._1 + "\t" + pair._2.toString).saveAsTextFile(args.output())
+    
+    /*
+      (saddest,CompactBuffer(spectacle,0.5, tale,0.5))
+      (painfully,CompactBuffer(discover'd,0.25, remain,0.25, to,0.25, with,0.25))
+      (defendant,CompactBuffer(and,0.6666667, doth,0.33333334))
+      (cricket,CompactBuffer(to,1.0))
+      need to be sorted..
+      need to split the stripes into pairs
+    */
+    .map(s => (s._1, s._2.toList.mkString(", ")))
+    counts.map(s => s._1 + "\t" + "{" + s._2 + "}").saveAsTextFile(args.output())
     }
   }
 

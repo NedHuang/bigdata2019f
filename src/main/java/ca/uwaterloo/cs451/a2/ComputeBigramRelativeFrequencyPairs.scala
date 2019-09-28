@@ -35,7 +35,7 @@
     verify()
   }
   
-  class MyPartitioner(partitions: Int) extends Partitioner {
+  class PairPartitioner(partitions: Int) extends Partitioner {
     def numPartitions: Int = partitions
     def getPartition(key: Any) : Int = {
       val k = key.asInstanceOf[(String, String)]
@@ -77,8 +77,9 @@
       .map(tempResult => (tempResult, 1)) // add the count to each list of (p(0),p(1)), (p(0), '*'), e.g., List((((my,hero),(my,*)),1), (((hero,academia),(hero,*)),1))
       // same as  reduceByKey((x,y)=> x + y)
       .reduceByKey(_ + _)
-      .repartitionAndSortWithinPartitions(new MyPartitioner(args.reducers()))
+      .repartitionAndSortWithinPartitions(new PairPartitioner(args.reducers()))
       /*
+        temp output need to be sorted..
         ((anger,with),1)
         ((off,myself),1)
         ((with,cannibals),1)
@@ -93,7 +94,7 @@
         ((precisely,can),1)
         ((northumberlands,two),1)
         ((your,fashion),1)
-
+        
       */
     .map(pair => pair._1._2 match {
       case "*"  => {
