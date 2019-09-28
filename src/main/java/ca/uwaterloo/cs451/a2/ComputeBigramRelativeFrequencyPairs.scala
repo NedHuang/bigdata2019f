@@ -24,7 +24,9 @@
   import org.apache.spark.SparkContext
   import org.apache.spark.SparkConf
   import org.rogach.scallop._
+  import org.apache.spark.Partitioner
   
+  // no need to change
   class Conf(args: Seq[String]) extends ScallopConf(args) {
     mainOptions = Seq(input, output, reducers)
     val input = opt[String](descr = "input path", required = true)
@@ -33,30 +35,78 @@
     verify()
   }
   
-  object BigramCount extends Tokenizer {
+  class MyPartitioner(partitions: Int) extends Partitioner {
+    def numPartitions: Int = partitions
+    def getPartition(key: Any) : Int = {
+      val k = key.asInstanceOf[(String, String)]
+      ((k._1.hashCode() & Integer.MAX_VALUE) % numPartitions)
+    }
+  }
+
+  object ComputeBigramRelativeFrequencyPairs extends Tokenizer {
     val log = Logger.getLogger(getClass().getName())
   
     def main(argv: Array[String]) {
+      print("Hello World")
       val args = new Conf(argv)
   
       log.info("Input: " + args.input())
       log.info("Output: " + args.output())
       log.info("Number of reducers: " + args.reducers())
   
-      val conf = new SparkConf().setAppName("Bigram Count")
+      val conf = new SparkConf().setAppName("ComputeBigramRelativeFrequencyPairs")
       val sc = new SparkContext(conf)
   
       val outputDir = new Path(args.output())
       FileSystem.get(sc.hadoopConfiguration).delete(outputDir, true)
-  
+
+      var sum = 0.0f
       val textFile = sc.textFile(args.input())
-      val counts = textFile
-        .flatMap(line => {
-          val tokens = tokenize(line)
-          if (tokens.length > 1) tokens.sliding(2).map(p => p.mkString(" ")).toList else List()
-        })
-        .map(bigram => (bigram, 1))
-        .reduceByKey(_ + _)
-      counts.saveAsTextFile(args.output())
+
+      // flatMap: take a function as input, apply it into vars, return a set of result to each var. Finally aggregate them into a big set
+      val counts = textFile.flatMap(line => {
+        val tokens = tokenize(line)
+        // assume tokens = List('my', 'hero', 'academia') => list( list('my','hero'), list('hero','academia'))   \\ sliding
+        if (tokens.length > 1){
+          tokens.sliding(2).flatMap(
+            //  ((my ,hero),(my,*)), ((hero,academia),(hero,*)))
+            pair => List((pair(0),pair(1)), (pair(0), "*"))).toList
+        }
+        else List() 
+      }) // now get many lists of (p(0),p(1)), (p(0), '*')
+      .map(tempResult => (tempResult, 1)) // add the count to each list of (p(0),p(1)), (p(0), '*'), e.g., List((((my,hero),(my,*)),1), (((hero,academia),(hero,*)),1))
+      // same as  reduceByKey((x,y)=> x + y)
+      .reduceByKey(_ + _)
+      .repartitionAndSortWithinPartitions(new MyPartitioner(args.reducers()))
+      /*
+        ((anger,with),1)
+        ((off,myself),1)
+        ((with,cannibals),1)
+        ((our,heels),1)
+        ((night,she),3)
+        ((all,matter),1)
+        ((faithful,services),1)
+        ((pretty,lad),1)
+        ((ten,days),4)
+        ((cost,of),3)
+        ((smooths,*),1)
+        ((precisely,can),1)
+        ((northumberlands,two),1)
+        ((your,fashion),1)
+
+      */
+    .map(pair => pair._1._2 match {
+      case "*"  => {
+        sum = pair._2
+        (pair._1, pair._2)
+      }
+      case _ => (pair._1, pair._2 / sum)
+    })
+    // remove something like (('aaaa','*'),1)
+    .filter((pair) => pair._1._2 != "*")
+
+
+    counts.map(pair => pair._1 + "\t" + pair._2.toString).saveAsTextFile(args.output())
     }
   }
+
