@@ -32,6 +32,8 @@
     val input = opt[String](descr = "input path", required = true)
     val output = opt[String](descr = "output path", required = true)
     val reducers = opt[Int](descr = "number of reducers", required = false, default = Some(1))
+    val executorCores = opt[Int](descr = "executor-cores", required = true, default = Some(4))
+    val executorMemory = opt[String](descr = "executor-memory", required = true, default = Some("24G"))
     verify()
   }
   
@@ -55,6 +57,9 @@
       log.info("Number of reducers: " + args.reducers())
   
       val conf = new SparkConf().setAppName("ComputeBigramRelativeFrequencyPairs")
+      // set --executor-cores 4 --executor-memory 24G
+      // conf.set("spark.executor.memory", args.executorMemory())
+      // conf.set("spark.executor.cores", args.executorCores())
       val sc = new SparkContext(conf)
   
       val outputDir = new Path(args.output())

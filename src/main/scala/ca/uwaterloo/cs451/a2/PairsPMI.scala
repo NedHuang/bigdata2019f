@@ -113,7 +113,9 @@
       
       //compute PMI
       pmis.saveAsTextFile(args.output())
-
+      
+      println("====================================================")
+      println(numOfLines)
     }
 
   }
