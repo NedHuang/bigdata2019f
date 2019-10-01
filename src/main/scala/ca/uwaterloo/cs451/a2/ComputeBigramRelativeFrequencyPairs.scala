@@ -25,6 +25,7 @@
   import org.apache.spark.SparkConf
   import org.rogach.scallop._
   import org.apache.spark.Partitioner
+  import org.apache.spark.HashPartitioner
   
   // no need to change
   class Conf(args: Seq[String]) extends ScallopConf(args) {
@@ -32,7 +33,8 @@
     val input = opt[String](descr = "input path", required = true)
     val output = opt[String](descr = "output path", required = true)
     val reducers = opt[Int](descr = "number of reducers", required = false, default = Some(1))
-    val executorCores = opt[Int](descr = "executor-cores", required = true, default = Some(4))
+    val executorCores = opt[Int](descr = "executor-cores", required = true, default = Some(2))
+    val numExecutors = opt[Int](descr = "num-executors", required = true, default = Some(4))
     val executorMemory = opt[String](descr = "executor-memory", required = true, default = Some("24G"))
     verify()
   }
@@ -82,7 +84,7 @@
       .map(tempResult => (tempResult, 1)) // add the count to each list of (p(0),p(1)), (p(0), '*'), e.g., List((((my,hero),(my,*)),1), (((hero,academia),(hero,*)),1))
       // same as  reduceByKey((x,y)=> x + y)
       .reduceByKey(_ + _)
-      .repartitionAndSortWithinPartitions(new PairPartitioner(args.reducers()))
+      .repartitionAndSortWithinPartitions(new HashPartitioner(args.reducers()))
       /*
         temp output need to be sorted..
         ((anger,with),1)

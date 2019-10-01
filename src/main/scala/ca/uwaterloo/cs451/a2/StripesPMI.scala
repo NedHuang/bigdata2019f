@@ -25,6 +25,7 @@
   import org.apache.spark.SparkConf
   import org.rogach.scallop._
   import org.apache.spark.Partitioner
+  import org.apache.spark.HashPartitioner
   
   // no need to change
   class StripesPMIConf(args: Seq[String]) extends ScallopConf(args) {
@@ -32,7 +33,10 @@
     val input = opt[String](descr = "input path", required = true)
     val output = opt[String](descr = "output path", required = true)
     val reducers = opt[Int](descr = "number of reducers", required = false, default = Some(1))
-    val threshold = opt[Int](descr = "threshold", required = false, default = Some(0) )
+    val threshold = opt[Int](descr = "threshold", required = false, default = Some(0) )    
+    val executorCores = opt[Int](descr = "executor-cores", required = true, default = Some(2))
+    val numExecutors = opt[Int](descr = "num-executors", required = true, default = Some(4))
+    val executorMemory = opt[String](descr = "executor-memory", required = true, default = Some("24G"))
     verify()
   }
   
@@ -55,7 +59,7 @@
       log.info("Output: " + args.output())
       log.info("Number of reducers: " + args.reducers())
   
-      val conf = new SparkConf().setAppName("ComputeBigramRelativeFrequencyPairs")
+      val conf = new SparkConf().setAppName("StripsPMI")
       val sc = new SparkContext(conf)
   
       val outputDir = new Path(args.output())
