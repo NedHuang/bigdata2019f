@@ -1,16 +1,30 @@
-package ca.uwaterloo.cs451.a3;
+/**
+ * Bespin: reference implementations of "big data" algorithms
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+package ca.uwaterloo.cs451.a3;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.ByteWritable;
+import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.MapFile;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.WritableUtils;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.kohsuke.args4j.CmdLineException;
@@ -19,41 +33,61 @@ import org.kohsuke.args4j.Option;
 import org.kohsuke.args4j.ParserProperties;
 import tl.lin.data.array.ArrayListWritable;
 import tl.lin.data.pair.PairOfInts;
+import tl.lin.data.pair.PairOfWritables;
 
-import java.io.*;
-import java.util.*;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.DataInput;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.Set;
+import java.util.Stack;
+import java.util.TreeSet;
 
+
+import java.util.*; // import the ArrayList class
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.WritableUtils;
 
 public class BooleanRetrievalCompressed extends Configured implements Tool {
 
+  private MapFile.Reader index;
   private FSDataInputStream collection;
   private Stack<Set<Integer>> stack;
-  private List<Path> paths = new ArrayList<>();
-  private int numberOfReducers = 1;
-  private FileSystem dfs;
+  private List<Path> filePathList = new ArrayList<>();
+  private int numOfReducers = 1;
+  private FileSystem fs_global = null;
 
   private BooleanRetrievalCompressed() {}
 
   private void initialize(String indexPath, String collectionPath, FileSystem fs) throws IOException {
-    for (FileStatus f: fs.listStatus(new Path(indexPath))) {
-      Path path = f.getPath();
-      if (path.getName().startsWith("part-r-")) {
-        paths.add(path);
+    // index = new MapFile.Reader(new Path(indexPath + "/part-r-00000"), fs.getConf());
+    // collection = fs.open(new Path(collectionPath));
+    // stack = new Stack<>();
+
+    // for all files, add their path to filePathList /part-r-00000, part-r-00001...
+    for(FileStatus file : fs.listStatus(new Path(indexPath))){          
+      Path p = file.getPath();
+      if (p.getName().startsWith("part-r-")) {
+        filePathList.add(p);
       }
     }
-    // fuck you altiscale
-//    paths.sort(Comparator.comparing(Path::getName));
-    Collections.sort(paths, new Comparator<Path>() {
+
+    Collections.sort(filePathList, new Comparator<Path>() {
       @Override
       public int compare(Path p1, Path p2) {
         return p1.getName().compareTo(p2.getName());
       }
     });
-    this.numberOfReducers = paths.size();
-    dfs = fs;
+    this.numOfReducers = filePathList.size();
     collection = fs.open(new Path(collectionPath));
     stack = new Stack<>();
+    this.fs_global = fs;
   }
+
+
 
   private void runQuery(String q) throws IOException {
     String[] terms = q.split("\\s+");
@@ -124,34 +158,39 @@ public class BooleanRetrievalCompressed extends Configured implements Tool {
 
   private ArrayListWritable<PairOfInts> fetchPostings(String term) throws IOException {
     Text key = new Text();
-    key.set(term);
-    BytesWritable value = new BytesWritable();
-    int partition = (term.hashCode() & Integer.MAX_VALUE) % numberOfReducers;
 
-    MapFile.Reader index = new MapFile.Reader(paths.get(partition), dfs.getConf());
+    // return array of pairofints
+    ArrayListWritable<PairOfInts> posting = new ArrayListWritable<PairOfInts>();
+    BytesWritable value = new BytesWritable(); // the file was written in bytes.
+    key.set(term);
+    int partition = (term.hashCode() & Integer.MAX_VALUE) % numOfReducers;
+
+    MapFile.Reader index = new MapFile.Reader(filePathList.get(partition), fs_global.getConf());
+    // get the value 
     index.get(key, value);
     index.close();
 
-    ByteArrayInputStream compressedPostings = new ByteArrayInputStream(value.getBytes());
-    DataInputStream dataInputStream = new DataInputStream(compressedPostings);
-    int df = WritableUtils.readVInt(dataInputStream);
-
-    ArrayListWritable<PairOfInts> postings = new ArrayListWritable<>();
-    int prevDoc = 0;
-    for(int i = 0; i < df; i++) {
-      int docId = WritableUtils.readVInt(dataInputStream) + prevDoc;
-      prevDoc = docId;
-      int tf = WritableUtils.readVInt(dataInputStream);
-//      System.out.println("" + docId + " " + tf);
-      postings.add(new PairOfInts(docId, tf));
+    // create stream
+    ByteArrayInputStream bytesOfPosting = new ByteArrayInputStream(value.getBytes());
+    DataInputStream inputStreamOfPosting = new DataInputStream(bytesOfPosting);
+    
+    int df = WritableUtils.readVInt(inputStreamOfPosting);
+    int prevDocNo = 0;
+    for(int i = 0; i < df; i++){
+      // after adding the gap, it become the current doc number
+      // read a pair of gap and tf in each iteration
+      prevDocNo = prevDocNo+WritableUtils.readVInt(inputStreamOfPosting);
+      int tf = WritableUtils.readVInt(inputStreamOfPosting);
+      PairOfInts docNo_tf = new PairOfInts(prevDocNo, tf);
+      posting.add(docNo_tf);
     }
-
-    compressedPostings.close();
-    dataInputStream.close();
-
-    return postings;
+    // close stream and post
+    bytesOfPosting.close();
+    inputStreamOfPosting.close();
+    return posting;
   }
 
+  // no need to change
   public String fetchLine(long offset) throws IOException {
     collection.seek(offset);
     BufferedReader reader = new BufferedReader(new InputStreamReader(collection));
@@ -172,7 +211,7 @@ public class BooleanRetrievalCompressed extends Configured implements Tool {
   }
 
   /**
-   * Runs this tool.
+   * Runs this tool. 
    */
   @Override
   public int run(String[] argv) throws Exception {
@@ -206,6 +245,9 @@ public class BooleanRetrievalCompressed extends Configured implements Tool {
 
   /**
    * Dispatches command-line arguments to the tool via the {@code ToolRunner}.
+   *
+   * @param args command-line arguments
+   * @throws Exception if tool encounters an exception
    */
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new BooleanRetrievalCompressed(), args);
