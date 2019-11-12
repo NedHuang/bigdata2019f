@@ -64,39 +64,49 @@ object Q4{
                 // (N_NATIONKEY, n_name)
                 .map(line =>(line.split('|')(0).toInt, line.split('|')(1)))
 
-            val ordersBroadcast = sc.broadcast(orders.collectAsMap())
+            // val ordersBroadcast = sc.broadcast(orders.collectAsMap())
             val customerBroadcast = sc.broadcast(customer.collectAsMap())
             val nationBroadcast = sc.broadcast(nation.collectAsMap())
 
-            val ordersMap = ordersBroadcast.value
+            // val ordersMap = ordersBroadcast.value
             val customerMap = customerBroadcast.value
             val nationMap = nationBroadcast.value
-            val record = lineItems
-            .reduceByKey(_ + _)
-            // cogroup gives(l_ORDERKEY,(counter, O_CUSTKEY))
-            .cogroup(orders)
-            .filter(line =>(line._2._1.size != 0 && line._2._2.size != 0))
-            .flatMap(pair => {
-                //  n_nationkey, n_name, count(*)
-                var record = ListBuffer[((Int, String), Int)]()
-                val o_CUSTKEY = pair._2._2.head
-                val n_NATIONKEY = customerMap(o_CUSTKEY)
-                val n_name = nationMap(n_NATIONKEY)
-                val iterator = pair._2._1.iterator
-                while (iterator.hasNext) {
-                    record += (((n_NATIONKEY, n_name), iterator.next()))
-                }
-                record
-            })
-            .reduceByKey(_ + _)
-            // key: (n_nationkey, n_name), value: count(*) need to reduce
-            .map(pair => ((pair._1._1, pair._1._2), pair._2))
-            .sortByKey()
-            .collect()
-            .foreach(pair => {
-                val output = (pair._1._1, pair._1._2, pair._2)
-                println(output)
-            })
+            
+            // val record = lineItems
+            // .reduceByKey(_ + _)
+            // // cogroup gives(l_ORDERKEY,(counter, O_CUSTKEY))
+            // .cogroup(orders)
+            // .filter(line =>(line._2._1.size != 0 && line._2._2.size != 0))
+            // .flatMap(pair => {
+            //     //  n_nationkey, n_name, count(*)
+            //     var record_list = ListBuffer[((Int, String), Int)]()
+            //     val o_CUSTKEY = pair._2._2.head
+            //     val n_NATIONKEY = customerMap(o_CUSTKEY)
+            //     val n_name = nationMap(n_NATIONKEY)
+            //     val iterator = pair._2._1.iterator
+            //     while (iterator.hasNext) {
+            //         record_list += (((n_NATIONKEY, n_name), iterator.next()))
+            //     }
+            //     record_list
+            // })
+            // .reduceByKey(_ + _)
+            // // key: (n_nationkey, n_name), value: count(*) need to reduce
+            // .map(pair => ((pair._1._1, pair._1._2), pair._2))
+            // .sortByKey()
+            // .collect()
+            // .foreach(pair => {
+            //     val output = (pair._1._1, pair._1._2, pair._2)
+            //     println(output)
+            // })
+
+            val record = lineItems.cogroup(orders)
+                .filter(p => p._2._1.iterator.hasNext)
+                .map(p => (customerMap(p._2._2.iterator.next()), p._2._1.iterator.next()))
+                .reduceByKey(_ + _)
+                .map(p => (p._1.toInt, (nationMap(p._1), p._2)))
+                .sortByKey()
+                .collect()
+                .foreach(p => println("(" + p._1 + "," + p._2._1 + "," + p._2._2 + ")"))
         }
         else if(args.parquet()){
             val sparkSession = SparkSession.builder.getOrCreate
@@ -127,39 +137,49 @@ object Q4{
                 // (N_NATIONKEY, n_name)
                 .map(line =>(line.getInt(0), line.getString(1)))
 
-            val ordersBroadcast = sc.broadcast(orders.collectAsMap())
+            // val ordersBroadcast = sc.broadcast(orders.collectAsMap())
             val customerBroadcast = sc.broadcast(customer.collectAsMap())
             val nationBroadcast = sc.broadcast(nation.collectAsMap())
 
-            val ordersMap = ordersBroadcast.value
+            // val ordersMap = ordersBroadcast.value
             val customerMap = customerBroadcast.value
             val nationMap = nationBroadcast.value
-            val record = lineItems
-            .reduceByKey(_ + _)
-            // cogroup gives(l_ORDERKEY,(counter, O_CUSTKEY))
-            .cogroup(orders)
-            .filter(line =>(line._2._1.size != 0 && line._2._2.size != 0))
-            .flatMap(pair => {
-                //  n_nationkey, n_name, count(*)
-                var record = ListBuffer[((Int, String), Int)]()
-                val o_CUSTKEY = pair._2._2.head
-                val n_NATIONKEY = customerMap(o_CUSTKEY)
-                val n_name = nationMap(n_NATIONKEY)
-                val iterator = pair._2._1.iterator
-                while (iterator.hasNext) {
-                    record += (((n_NATIONKEY, n_name), iterator.next()))
-                }
-                record
-            })
-            .reduceByKey(_ + _)
-            // key: (n_nationkey, n_name), value: count(*) need to reduce
-            .map(pair => ((pair._1._1, pair._1._2), pair._2))
-            .sortByKey()
-            .collect()
-            .foreach(pair => {
-                val output = (pair._1._1, pair._1._2, pair._2)
-                println(output)
-            })
+            // val record = lineItems
+            // .reduceByKey(_ + _)
+            // // cogroup gives(l_ORDERKEY,(counter, O_CUSTKEY))
+            // .cogroup(orders)
+            // .filter(line =>(line._2._1.size != 0 && line._2._2.size != 0))
+            // .flatMap(pair => {
+            //     //  n_nationkey, n_name, count(*)
+            //     var record = ListBuffer[((Int, String), Int)]()
+            //     val o_CUSTKEY = pair._2._2.head
+            //     val n_NATIONKEY = customerMap(o_CUSTKEY)
+            //     val n_name = nationMap(n_NATIONKEY)
+            //     val iterator = pair._2._1.iterator
+            //     while (iterator.hasNext) {
+            //         record += (((n_NATIONKEY, n_name), iterator.next()))
+            //     }
+            //     record
+            // })
+            // .reduceByKey(_ + _)
+            // // key: (n_nationkey, n_name), value: count(*) need to reduce
+            // .map(pair => ((pair._1._1, pair._1._2), pair._2))
+            // .sortByKey()
+            // .collect()
+            // .foreach(pair => {
+            //     val output = (pair._1._1, pair._1._2, pair._2)
+            //     println(output)
+            // })
+
+            val record = lineItems.cogroup(orders)
+                .filter(p => p._2._1.iterator.hasNext)
+                .map(p => (customerMap(p._2._2.iterator.next()), p._2._1.iterator.next()))
+                .reduceByKey(_ + _)
+                .map(p => (p._1.toInt, (nationMap(p._1), p._2)))
+                .sortByKey()
+                .collect()
+                .foreach(p => println("(" + p._1 + "," + p._2._1 + "," + p._2._2 + ")"))
+            
         }
     }
 }

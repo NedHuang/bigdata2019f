@@ -36,25 +36,36 @@ object Q2 {
             val ordersTextFile = sc.textFile(args.input() + "/orders.tbl")
             // (O_ORDERKEY, o_clerk)
             val orders = ordersTextFile
-                .map(line=>(line.split("\\|")(0), line.split("\\|")(6)))
+                .map(line=>(line.split('|')(0), line.split('|')(6)))
 
             // have orderKey and date. return 
-            val lineItems =lineItemTextFile
+            val lineItem =lineItemTextFile
                 // (O_ORDERKEY, date) O_ORDERKEY is a foreign key to order key
-                .map(line=>(line.split("\\|")(0), line.split("\\|")(10)))
-                .filter(_._2.contains(date))
+                // // .map(line=>(line.split('|')(0), line.split('|')(10)))
+                // // .filter(_._2.contains(date))
+                .filter(line=>line.split('|')(10).contains(date))
 
-            val records = lineItems
-            // combine  (K, V) and (K, W) and returns a dataset of (K, (Iterable, Iterable)) tuples
-            // (key, (CompactBuffer(),CompactBuffer(Clerk#)))
+            // val records = lineItem
+            // // combine  (K, V) and (K, W) and returns a dataset of (K, (Iterable, Iterable)) tuples
+            // // (key, (CompactBuffer(),CompactBuffer(Clerk#)))
+            //     .cogroup(orders)
+            //     .filter(_._2._1.size != 0) // remove if orderKey is empty
+            //     .sortByKey()
+            //     // List the first 20 by order key
+            //     .take(20)
+            //     // get o_clerk from compactbuffer // cast O_ORDERKEY to Long, 
+            //     .map(record => (record._2._2.head, record._1.toLong))
+            //     .foreach(println)
+            val records = lineItem
+                // (OrderKey,1)
+                .map(line=>(line.split('|')(0),1))
                 .cogroup(orders)
-                .filter(_._2._1.size != 0) // remove if orderKey is empty
+                .filter(p => p._2._1.iterator.hasNext)
+                .map(line => (line._1.toInt, line._2._2.mkString))
                 .sortByKey()
-                // List the first 20 by order key
                 .take(20)
-                // get o_clerk from compactbuffer // cast O_ORDERKEY to Long, 
-                .map(record => (record._2._2.head, record._1.toLong))
-                .foreach(println)
+                .map(line => (line._2, line._1))
+                .foreach(println) 
         }
         else if(args.parquet()){
             val sparkSession = SparkSession.builder.getOrCreate
