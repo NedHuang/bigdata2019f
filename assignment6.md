@@ -3,16 +3,15 @@
 ==================
 ## Question 1.
 Evaluation: Group-X, Group-Y, and Britney
-1-ROCA%: 18.79
+1-ROCA%: 17.25
 1-ROCA%: 12.82
-1-ROCA%: 15.85
+1-ROCA%: 17.96
 ## Question 2.
 Evaluation: Average on Test
 1-ROCA%: 11.34
 ## Question 3:
 Evaluation: Voting Ensemble on Test
 1-ROCA%: 15.46
-Voting: 1-ROCA%: 15.03
 ## Question 4.
 Evaluation: Single Classifier Trained on All Data
 1-ROCA%: 15.13
@@ -27,5 +26,4 @@ iteration 6: 1-ROCA%: 17.10
 iteration 7: 1-ROCA%: 14.84
 iteration 8: 1-ROCA%: 15.46
 iteration 9: 1-ROCA%: 15.90 
-
-Average. 1-ROCA%: 16.375
+Average: 1-ROCA%: 16.375
