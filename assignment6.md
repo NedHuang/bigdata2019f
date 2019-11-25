@@ -5,7 +5,7 @@
 Evaluation: Group-X, Group-Y, and Britney
 1-ROCA%: 17.25
 1-ROCA%: 12.82
-1-ROCA%: 17.96
+1-ROCA%: 15.85
 ## Question 2.
 Evaluation: Average on Test
 1-ROCA%: 11.34
