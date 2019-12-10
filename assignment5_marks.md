@@ -16,9 +16,9 @@ github:NedHuang
 
 **Test 5** Q1 test 2 (Linux/Text) mark: 1.25/1.25
 
-**Test 6** Q2 test 1 (Linux/Parquet) mark: 0.0/1.25
+**Test 6** Q2 test 1 (Linux/Parquet) mark: 1.25/1.25
 
-**Test 7** Q2 test 1 (Linux/Text) mark: 0.0/1.25
+**Test 7** Q2 test 1 (Linux/Text) mark: 1.25/1.25
 
 **Test 8** Q2 test 2 (Linux/Parquet) mark: 1.25/1.25
 
@@ -68,9 +68,9 @@ github:NedHuang
 
 **Test 31** Q1 test 2 (Datasci/Text) mark: 1.25/1.25
 
-**Test 32** Q2 test 1 (Datasci/Parquet) mark: 0.0/1.25
+**Test 32** Q2 test 1 (Datasci/Parquet) mark: 1.25/1.25
 
-**Test 33** Q2 test 1 (Datasci/Text) mark: 0.0/1.25
+**Test 33** Q2 test 1 (Datasci/Text) mark: 1.25/1.25
 
 **Test 34** Q2 test 2 (Datasci/Parquet) mark: 1.25/1.25
 
@@ -116,7 +116,9 @@ github:NedHuang
 
 **Feedback :** Q2 test 1 output is off by a single line but the delta is quite big. Q4 count columns are off by a large delta. No bonus awarded for date format.
 
-**Final grade**
-mark: 81.0/100.0
+**Revised:** Q2 test 1 output is correct in logs. Bonus awarded for date formatting.
 
-summary: 20824226,m78huang,NedHuang,81.0/100.0
+**Final grade**
+mark: 91.0/100.0
+
+summary: 20824226,m78huang,NedHuang,91.0/100.0
